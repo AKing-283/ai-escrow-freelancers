@@ -22,7 +22,7 @@ A decentralized application for creating time-locked escrow accounts using Ether
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone [(https://github.com/AKing-283/ai-escrow-freelancers.git)]
 cd will-escrow-dapp
 ```
 

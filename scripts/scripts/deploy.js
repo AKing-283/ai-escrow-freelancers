@@ -1,0 +1,1 @@
+npm uninstall eth-gas-reporter

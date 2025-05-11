@@ -1,0 +1,23 @@
+{
+  "name": "will-escrow-dapp",
+  "version": "1.0.0",
+  "description": "Decentralized Will/Escrow DApp",
+  "scripts": {
+    "start:hardhat": "cd contracts && npx hardhat node",
+    "deploy:contract": "cd contracts && npx hardhat run scripts/deploy.js --network localhost",
+    "test:contract": "cd contracts && npx hardhat test",
+    "start:backend": "cd backend && python3 app.py",
+    "start:frontend": "cd frontend && npm run dev",
+    "install:all": "npm install && cd frontend && npm install && cd ../contracts && npm install",
+    "dev": "concurrently \"npm run start:hardhat\" \"npm run start:backend\" \"npm run start:frontend\""
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.3.0",
+    "concurrently": "^8.2.2",
+    "dotenv": "^16.5.0"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.24.0"
+  }
+}

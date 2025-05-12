@@ -3,6 +3,12 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import WillEscrow from '../contracts/WillEscrow.json';
 
+declare global {
+  interface Window {
+    ethereum: any;
+  }
+}
+
 interface Web3ContextType {
   account: string | null;
   chainId: number | null;
@@ -24,7 +30,7 @@ export const Web3Provider = ({ children }: { children: React.ReactNode }) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+  const CONTRACT_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
 
   // Wallet connect/disconnect logic
   const connect = async () => {
@@ -79,7 +85,8 @@ export const Web3Provider = ({ children }: { children: React.ReactNode }) => {
           const browserProvider = new ethers.BrowserProvider(window.ethereum);
           const accounts = await browserProvider.listAccounts();
           if (accounts.length > 0) {
-            setAccount(accounts[0].address || accounts[0]);
+            const accountAddress = typeof accounts[0] === 'string' ? accounts[0] : accounts[0].address;
+            setAccount(accountAddress);
             const network = await browserProvider.getNetwork();
             setChainId(Number(network.chainId));
             setProvider(browserProvider);

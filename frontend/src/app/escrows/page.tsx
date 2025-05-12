@@ -28,6 +28,8 @@ export default function Escrows() {
   const [error, setError] = useState<string | null>(null);
   const [releasingId, setReleasingId] = useState<number | null>(null);
   const [selectedEscrow, setSelectedEscrow] = useState<Escrow | null>(null);
+  const [filter, setFilter] = useState<'all' | 'client' | 'freelancer'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'in-progress' | 'completed' | 'verified'>('all');
 
   const fetchEscrows = async () => {
     if (!contract || !account) return;
@@ -36,25 +38,40 @@ export default function Escrows() {
       setLoading(true);
       setError(null);
 
-      const ownerEscrows = await contract.getEscrowsByOwner(account);
-      const beneficiaryEscrows = await contract.getEscrowsByBeneficiary(account);
-
-      const formattedEscrows = [...ownerEscrows, ...beneficiaryEscrows].map((escrow: any) => ({
-        id: escrow.id,
-        owner: escrow.owner,
-        beneficiary: escrow.beneficiary,
-        amount: ethers.formatEther(escrow.amount),
-        releaseTime: Number(escrow.releaseTime),
-        released: escrow.released,
-        title: escrow.title,
-        description: escrow.description,
-        submission: escrow.submission,
-        isVerified: escrow.isVerified,
-        isApproved: escrow.isApproved,
-        verificationExplanation: escrow.verificationExplanation,
+      // Get all jobs where the user is the owner
+      const filter = contract.filters["JobPosted(address,uint96,uint96,string)"];
+      console.log('Fetching jobs with filter:', filter);
+      const events = await contract.queryFilter(filter);
+      console.log('Found events:', events);
+      
+      // Format jobs from events
+      const formattedJobs = await Promise.all(events.map(async (event: any) => {
+        console.log('Processing event:', event);
+        const details = await contract.getJobDetails(event.args.owner);
+        console.log('Job details:', details);
+        // Only include jobs where the current user is the owner
+        if (details.owner.toLowerCase() === account.toLowerCase()) {
+          return {
+            id: event.args.owner,
+            title: 'Project',
+            description: details.description,
+            budget: ethers.formatEther(details.amount),
+            deadline: Number(details.releaseTime),
+            owner: details.owner,
+            freelancer: details.freelancer,
+            status: details.isCompleted ? 'completed' : 
+                   details.isVerified ? 'verified' :
+                   details.freelancer !== ethers.ZeroAddress ? 'in-progress' : 'open',
+            isApproved: details.isApproved
+          };
+        }
+        return null;
       }));
 
-      setEscrows(formattedEscrows);
+      // Filter out null values
+      const filteredJobs = formattedJobs.filter(job => job !== null);
+      console.log('Formatted jobs:', filteredJobs);
+      setEscrows(filteredJobs);
     } catch (err) {
       console.error('Error fetching escrows:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch escrows');
@@ -63,12 +80,29 @@ export default function Escrows() {
     }
   };
 
-  const handleRelease = async (escrowId: number) => {
+  const filteredEscrows = escrows.filter(escrow => {
+    const isClient = account === escrow.owner;
+    const isFreelancer = account === escrow.freelancer;
+    
+    // Role filter
+    if (filter === 'client' && !isClient) return false;
+    if (filter === 'freelancer' && !isFreelancer) return false;
+
+    // Status filter
+    if (statusFilter === 'all') return true;
+    if (statusFilter === 'completed' && escrow.status === 'completed') return true;
+    if (statusFilter === 'in-progress' && escrow.status === 'in-progress') return true;
+    if (statusFilter === 'verified' && escrow.status === 'verified') return true;
+
+    return true;
+  });
+
+  const handleRelease = async (escrowId: string) => {
     if (!contract) return;
 
     try {
       setReleasingId(escrowId);
-      const tx = await contract.releaseEscrow(escrowId);
+      const tx = await contract.releaseFunds(escrowId);
       await tx.wait();
       await fetchEscrows();
     } catch (err) {
@@ -124,6 +158,35 @@ export default function Escrows() {
           </Link>
         </div>
 
+        <div className="mb-6 flex flex-wrap gap-4 items-center">
+          <div className="flex items-center space-x-4">
+            <label className="text-sm font-medium text-gray-700">Role:</label>
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value as 'all' | 'client' | 'freelancer')}
+              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            >
+              <option value="all">All Projects</option>
+              <option value="client">As Client</option>
+              <option value="freelancer">As Freelancer</option>
+            </select>
+          </div>
+
+          <div className="flex items-center space-x-4">
+            <label className="text-sm font-medium text-gray-700">Status:</label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as 'all' | 'in-progress' | 'completed' | 'verified')}
+              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            >
+              <option value="all">All Status</option>
+              <option value="in-progress">In Progress</option>
+              <option value="verified">Verified</option>
+              <option value="completed">Completed</option>
+            </select>
+          </div>
+        </div>
+
         {loading ? (
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -132,16 +195,16 @@ export default function Escrows() {
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
             {error}
           </div>
-        ) : escrows.length === 0 ? (
+        ) : filteredEscrows.length === 0 ? (
           <div className="bg-white rounded-lg shadow-sm p-8 text-center">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">No Projects Found</h3>
             <p className="text-gray-600">
-              You haven't created or been assigned any projects yet.
+              You haven't created or been assigned any projects matching your current filters.
             </p>
           </div>
         ) : (
           <div className="space-y-6">
-            {escrows.map((escrow) => (
+            {filteredEscrows.map((escrow) => (
               <div key={escrow.id} className="bg-white rounded-lg shadow-sm overflow-hidden">
                 <div className="p-6">
                   <div className="flex justify-between items-start mb-4">
@@ -152,17 +215,17 @@ export default function Escrows() {
                       </p>
                     </div>
                     <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                      escrow.released
+                      escrow.status === 'completed'
                         ? 'bg-green-100 text-green-800'
-                        : escrow.isVerified
+                        : escrow.status === 'verified'
                         ? escrow.isApproved
                           ? 'bg-green-100 text-green-800'
                           : 'bg-red-100 text-red-800'
                         : 'bg-blue-100 text-blue-800'
                     }`}>
-                      {escrow.released
+                      {escrow.status === 'completed'
                         ? 'Completed'
-                        : escrow.isVerified
+                        : escrow.status === 'verified'
                         ? escrow.isApproved
                           ? 'Approved'
                           : 'Rejected'
@@ -173,12 +236,12 @@ export default function Escrows() {
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
                       <p className="text-sm font-medium text-gray-500">Amount</p>
-                      <p className="text-sm text-gray-900">{escrow.amount} ETH</p>
+                      <p className="text-sm text-gray-900">{escrow.budget} ETH</p>
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-500">Deadline</p>
                       <p className="text-sm text-gray-900">
-                        {new Date(escrow.releaseTime * 1000).toLocaleDateString()}
+                        {new Date(escrow.deadline * 1000).toLocaleDateString()}
                       </p>
                     </div>
                   </div>
@@ -195,14 +258,14 @@ export default function Escrows() {
                     </div>
                   )}
 
-                  {escrow.isVerified && escrow.verificationExplanation && (
+                  {escrow.status === 'verified' && escrow.verificationExplanation && (
                     <div className="mb-4">
                       <p className="text-sm font-medium text-gray-500 mb-1">Verification Result</p>
                       <p className="text-sm text-gray-900">{escrow.verificationExplanation}</p>
                     </div>
                   )}
 
-                  {!escrow.released && account === escrow.owner && !escrow.isVerified && (
+                  {!escrow.status === 'completed' && account === escrow.owner && escrow.status !== 'verified' && (
                     <button
                       onClick={() => setSelectedEscrow(escrow)}
                       className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"

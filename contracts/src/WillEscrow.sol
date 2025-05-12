@@ -2,67 +2,138 @@
 pragma solidity ^0.8.0;
 
 contract WillEscrow {
-    struct Escrow {
-        address beneficiary;
-        uint96 amount;  // Packed with releaseTime
+    struct Job {
+        address owner;
+        uint96 amount;
         uint96 releaseTime;
-        bool released;
+        bool isOpen;
+        bool isCompleted;
+        address freelancer;
+        string description;
+        string submission;
+        bool isVerified;
+        bool isApproved;
     }
 
-    mapping(address => Escrow) public escrows;
+    mapping(address => Job) public jobs;
     
-    event Deposit(address indexed owner, address indexed beneficiary, uint96 amount, uint96 releaseTime);
-    event Release(address indexed beneficiary, uint96 amount);
+    event JobPosted(address indexed owner, uint96 amount, uint96 releaseTime, string description);
+    event FreelancerAssigned(address indexed owner, address indexed freelancer);
+    event DeadlineUpdated(address indexed owner, uint96 newReleaseTime);
+    event WorkSubmitted(address indexed owner, string submission);
+    event WorkVerified(address indexed owner, bool isApproved);
+    event FundsReleased(address indexed owner, address indexed freelancer, uint96 amount);
+    event FundsRefunded(address indexed owner, uint96 amount);
 
-    function createEscrow(address _beneficiary, uint96 _releaseTime) external payable {
+    function postJob(uint96 _releaseTime, string memory _description) external payable {
         require(msg.value > 0, "Must deposit some ETH");
-        require(_beneficiary != address(0), "Invalid beneficiary address");
         require(_releaseTime > uint96(block.timestamp), "Release time must be in the future");
-        require(escrows[msg.sender].amount == 0, "Escrow already exists");
+        require(jobs[msg.sender].amount == 0, "Job already exists");
 
-        escrows[msg.sender] = Escrow({
-            beneficiary: _beneficiary,
+        jobs[msg.sender] = Job({
+            owner: msg.sender,
             amount: uint96(msg.value),
             releaseTime: _releaseTime,
-            released: false
+            isOpen: true,
+            isCompleted: false,
+            freelancer: address(0),
+            description: _description,
+            submission: "",
+            isVerified: false,
+            isApproved: false
         });
 
-        emit Deposit(msg.sender, _beneficiary, uint96(msg.value), _releaseTime);
+        emit JobPosted(msg.sender, uint96(msg.value), _releaseTime, _description);
     }
 
-    function releaseFunds(address _owner) external {
-        Escrow storage escrow = escrows[_owner];
-        require(escrow.amount > 0, "No escrow found");
-        require(uint96(block.timestamp) >= escrow.releaseTime, "Release time not reached");
-        require(msg.sender == escrow.beneficiary, "Only beneficiary can release");
-        require(!escrow.released, "Funds already released");
+    function applyForJob(address _owner) external {
+        Job storage job = jobs[_owner];
+        require(job.amount > 0, "Job does not exist");
+        require(job.isOpen, "Job is not open");
+        require(job.freelancer == address(0), "Job already has a freelancer");
+        require(msg.sender != _owner, "Cannot apply for your own job");
 
-        uint96 amount = escrow.amount;
-        escrow.released = true;
-        escrow.amount = 0;
+        job.freelancer = msg.sender;
+        job.isOpen = false;
 
-        (bool success, ) = msg.sender.call{value: amount}("");
-        require(success, "Transfer failed");
-
-        emit Release(msg.sender, amount);
+        emit FreelancerAssigned(_owner, msg.sender);
     }
 
-    function getBalance(address _owner) external view returns (uint96) {
-        return escrows[_owner].amount;
+    function updateDeadline(uint96 _newReleaseTime) external {
+        Job storage job = jobs[msg.sender];
+        require(job.amount > 0, "Job does not exist");
+        require(!job.isCompleted, "Job is already completed");
+        require(_newReleaseTime > uint96(block.timestamp), "New release time must be in the future");
+
+        job.releaseTime = _newReleaseTime;
+        emit DeadlineUpdated(msg.sender, _newReleaseTime);
     }
 
-    function getEscrowDetails(address _owner) external view returns (
-        address beneficiary,
-        uint96 releaseTime,
+    function submitWork(string memory _submission) external {
+        Job storage job = jobs[msg.sender];
+        require(job.amount > 0, "Job does not exist");
+        require(msg.sender == job.freelancer, "Only assigned freelancer can submit work");
+        require(!job.isCompleted, "Job is already completed");
+
+        job.submission = _submission;
+        emit WorkSubmitted(msg.sender, _submission);
+    }
+
+    function verifyWork(address _owner, bool _isApproved) external {
+        Job storage job = jobs[_owner];
+        require(job.amount > 0, "Job does not exist");
+        require(!job.isCompleted, "Job is already completed");
+        require(bytes(job.submission).length > 0, "No work submitted yet");
+        // TODO: Add access control for AI agent
+
+        job.isVerified = true;
+        job.isApproved = _isApproved;
+
+        if (_isApproved) {
+            job.isCompleted = true;
+            uint96 amount = job.amount;
+            job.amount = 0;
+
+            (bool success, ) = job.freelancer.call{value: amount}("");
+            require(success, "Transfer failed");
+            emit FundsReleased(_owner, job.freelancer, amount);
+        } else {
+            job.isCompleted = true;
+            uint96 amount = job.amount;
+            job.amount = 0;
+
+            (bool success, ) = job.owner.call{value: amount}("");
+            require(success, "Transfer failed");
+            emit FundsRefunded(_owner, amount);
+        }
+
+        emit WorkVerified(_owner, _isApproved);
+    }
+
+    function getJobDetails(address _owner) external view returns (
+        address owner,
         uint96 amount,
-        bool released
+        uint96 releaseTime,
+        bool isOpen,
+        bool isCompleted,
+        address freelancer,
+        string memory description,
+        string memory submission,
+        bool isVerified,
+        bool isApproved
     ) {
-        Escrow storage escrow = escrows[_owner];
+        Job storage job = jobs[_owner];
         return (
-            escrow.beneficiary,
-            escrow.releaseTime,
-            escrow.amount,
-            escrow.released
+            job.owner,
+            job.amount,
+            job.releaseTime,
+            job.isOpen,
+            job.isCompleted,
+            job.freelancer,
+            job.description,
+            job.submission,
+            job.isVerified,
+            job.isApproved
         );
     }
 } 

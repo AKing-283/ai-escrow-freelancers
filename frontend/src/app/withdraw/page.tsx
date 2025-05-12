@@ -7,39 +7,57 @@ import { formatDistanceToNow } from 'date-fns';
 
 export default function Withdraw() {
   const { account, contract, connect } = useWeb3();
-  const [escrows, setEscrows] = useState<any[]>([]);
+  const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
   useEffect(() => {
     if (contract && account) {
-      loadEscrows();
+      loadJobs();
     }
   }, [contract, account]);
 
-  const loadEscrows = async () => {
+  const loadJobs = async () => {
     try {
-      // Get all escrows where the current user is the beneficiary
-      if (!contract) return;
-      const filter = contract.filters.Deposit(null, account);
-      const events = await contract.queryFilter(filter as any);
-      
-      const escrowDetails = await Promise.all(
-        events?.map(async (event: any) => {
-          const details = await contract?.getEscrowDetails(event.args?.owner);
-          return {
-            owner: event.args?.owner,
-            amount: formatEther(details.amount),
-            releaseTime: new Date(details.releaseTime.toNumber() * 1000),
-            released: details.released,
-          };
-        }) || []
-      );
+      setError(null);
 
-      setEscrows(escrowDetails);
+      // Get all jobs where the user is the freelancer
+      const filter = contract.filters["JobPosted(address,uint96,uint96,string)"];
+      console.log('Fetching jobs with filter:', filter);
+      const events = await contract.queryFilter(filter);
+      console.log('Found events:', events);
+      
+      // Format jobs from events
+      const formattedJobs = await Promise.all(events.map(async (event: any) => {
+        console.log('Processing event:', event);
+        const details = await contract.getJobDetails(event.args.owner);
+        console.log('Job details:', details);
+        // Only include jobs where the current user is the freelancer
+        if (details.freelancer.toLowerCase() === account.toLowerCase()) {
+          return {
+            id: event.args.owner,
+            title: 'Project',
+            description: details.description,
+            budget: ethers.formatEther(details.amount),
+            deadline: Number(details.releaseTime),
+            owner: details.owner,
+            freelancer: details.freelancer,
+            status: details.isCompleted ? 'completed' : 
+                   details.isVerified ? 'verified' :
+                   details.freelancer !== ethers.ZeroAddress ? 'in-progress' : 'open',
+            isApproved: details.isApproved
+          };
+        }
+        return null;
+      }));
+
+      // Filter out null values
+      const filteredJobs = formattedJobs.filter(job => job !== null);
+      console.log('Formatted jobs:', filteredJobs);
+      setJobs(filteredJobs);
     } catch (error) {
-      console.error('Error loading escrows:', error);
+      console.error('Error loading jobs:', error);
     }
   };
 
@@ -54,7 +72,7 @@ export default function Withdraw() {
       const tx = await contract.releaseFunds(owner);
       await tx.wait();
       setSuccess('Funds released successfully!');
-      loadEscrows();
+      loadJobs();
     } catch (error: any) {
       setError(error.message || 'Error releasing funds');
     } finally {
@@ -79,33 +97,30 @@ export default function Withdraw() {
 
         {account && (
           <div className="bg-white p-6 rounded-lg shadow-lg">
-            <h2 className="text-xl font-semibold mb-4">Available Escrows</h2>
+            <h2 className="text-xl font-semibold mb-4">Available Jobs</h2>
             
-            {escrows.length === 0 ? (
-              <p className="text-gray-500">No escrows available for withdrawal.</p>
+            {jobs.length === 0 ? (
+              <p className="text-gray-500">No jobs available for withdrawal.</p>
             ) : (
               <div className="space-y-4">
-                {escrows.map((escrow, index) => (
+                {jobs.map((job, index) => (
                   <div
                     key={index}
                     className="border p-4 rounded-lg flex justify-between items-center"
                   >
                     <div>
-                      <p className="font-medium">From: {escrow.owner}</p>
+                      <p className="font-medium">From: {job.owner}</p>
                       <p className="text-sm text-gray-600">
-                        Amount: {escrow.amount} ETH
+                        Amount: {job.budget} ETH
                       </p>
                       <p className="text-sm text-gray-600">
-                        Release Time:{' '}
-                        {formatDistanceToNow(escrow.releaseTime, {
-                          addSuffix: true,
-                        })}
+                        Deadline: {job.deadline}
                       </p>
                     </div>
-                    {!escrow.released &&
-                      escrow.releaseTime <= new Date() && (
+                    {!job.isCompleted &&
+                      job.deadline <= new Date().getTime() && (
                         <button
-                          onClick={() => handleRelease(escrow.owner)}
+                          onClick={() => handleRelease(job.id)}
                           disabled={loading}
                           className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 disabled:bg-gray-400"
                         >

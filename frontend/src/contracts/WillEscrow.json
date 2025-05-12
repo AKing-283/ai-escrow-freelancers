@@ -3,17 +3,17 @@
     {
       "inputs": [
         {
-          "internalType": "address",
-          "name": "_beneficiary",
-          "type": "address"
-        },
-        {
           "internalType": "uint96",
           "name": "_releaseTime",
           "type": "uint96"
+        },
+        {
+          "internalType": "string",
+          "name": "_description",
+          "type": "string"
         }
       ],
-      "name": "createEscrow",
+      "name": "postJob",
       "outputs": [],
       "stateMutability": "payable",
       "type": "function"
@@ -26,17 +26,69 @@
           "type": "address"
         }
       ],
-      "name": "getEscrowDetails",
-      "outputs": [
+      "name": "applyForJob",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint96",
+          "name": "_newReleaseTime",
+          "type": "uint96"
+        }
+      ],
+      "name": "updateDeadline",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_submission",
+          "type": "string"
+        }
+      ],
+      "name": "submitWork",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
         {
           "internalType": "address",
-          "name": "beneficiary",
+          "name": "_owner",
           "type": "address"
         },
         {
-          "internalType": "uint96",
-          "name": "releaseTime",
-          "type": "uint96"
+          "internalType": "bool",
+          "name": "_isApproved",
+          "type": "bool"
+        }
+      ],
+      "name": "verifyWork",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_owner",
+          "type": "address"
+        }
+      ],
+      "name": "getJobDetails",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
         },
         {
           "internalType": "uint96",
@@ -44,8 +96,43 @@
           "type": "uint96"
         },
         {
+          "internalType": "uint96",
+          "name": "releaseTime",
+          "type": "uint96"
+        },
+        {
           "internalType": "bool",
-          "name": "released",
+          "name": "isOpen",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "isCompleted",
+          "type": "bool"
+        },
+        {
+          "internalType": "address",
+          "name": "freelancer",
+          "type": "address"
+        },
+        {
+          "internalType": "string",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "submission",
+          "type": "string"
+        },
+        {
+          "internalType": "bool",
+          "name": "isVerified",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "isApproved",
           "type": "bool"
         }
       ],
@@ -53,36 +140,35 @@
       "type": "function"
     },
     {
+      "anonymous": false,
       "inputs": [
         {
+          "indexed": true,
           "internalType": "address",
-          "name": "_owner",
+          "name": "owner",
           "type": "address"
-        }
-      ],
-      "name": "getBalance",
-      "outputs": [
+        },
         {
+          "indexed": false,
           "internalType": "uint96",
-          "name": "",
+          "name": "amount",
           "type": "uint96"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
+        },
         {
-          "internalType": "address",
-          "name": "_owner",
-          "type": "address"
+          "indexed": false,
+          "internalType": "uint96",
+          "name": "releaseTime",
+          "type": "uint96"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "description",
+          "type": "string"
         }
       ],
-      "name": "releaseFunds",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
+      "name": "JobPosted",
+      "type": "event"
     },
     {
       "anonymous": false,
@@ -96,23 +182,11 @@
         {
           "indexed": true,
           "internalType": "address",
-          "name": "beneficiary",
+          "name": "freelancer",
           "type": "address"
-        },
-        {
-          "indexed": false,
-          "internalType": "uint96",
-          "name": "amount",
-          "type": "uint96"
-        },
-        {
-          "indexed": false,
-          "internalType": "uint96",
-          "name": "releaseTime",
-          "type": "uint96"
         }
       ],
-      "name": "Deposit",
+      "name": "FreelancerAssigned",
       "type": "event"
     },
     {
@@ -121,7 +195,64 @@
         {
           "indexed": true,
           "internalType": "address",
-          "name": "beneficiary",
+          "name": "owner",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint96",
+          "name": "newReleaseTime",
+          "type": "uint96"
+        }
+      ],
+      "name": "DeadlineUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "submission",
+          "type": "string"
+        }
+      ],
+      "name": "WorkSubmitted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "isApproved",
+          "type": "bool"
+        }
+      ],
+      "name": "WorkVerified",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "owner",
           "type": "address"
         },
         {
@@ -131,9 +262,9 @@
           "type": "uint96"
         }
       ],
-      "name": "Release",
+      "name": "FundsRefunded",
       "type": "event"
     }
   ],
-  "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+  "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
 } 

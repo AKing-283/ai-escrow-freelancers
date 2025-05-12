@@ -52,27 +52,64 @@ def check_rate_limit():
     request_timestamps.append(current_time)
     return True
 
+def extract_requirements(client_description: str) -> list:
+    """Extract specific requirements from client description."""
+    prompt = f"""Extract specific requirements from this client description. Return as a JSON array of strings:
+{client_description}"""
+    
+    try:
+        response = model.generate_content(prompt)
+        requirements = json.loads(response.text)
+        return requirements if isinstance(requirements, list) else []
+    except:
+        return []
+
 def verify_task(client_description: str, freelancer_submission: str) -> dict:
     """Verify if the freelancer's submission meets the client's requirements."""
     try:
-        # Optimized prompt to reduce token usage
-        prompt = f"""Task Verification:
-Client Requirements: {client_description}
-Freelancer Submission: {freelancer_submission}
+        # Extract requirements
+        requirements = extract_requirements(client_description)
+        
+        # Create detailed prompt for verification
+        prompt = f"""Task Verification for Freelance Work:
 
-Analyze if the submission meets the requirements. Respond in JSON format:
+Client Requirements:
+{client_description}
+
+Freelancer Submission:
+{freelancer_submission}
+
+Specific Requirements to Check:
+{json.dumps(requirements, indent=2)}
+
+Analyze the submission thoroughly and provide a detailed assessment. Consider:
+1. Technical accuracy and completeness
+2. Quality of work
+3. Meeting of specific requirements
+4. Professional standards
+5. Potential improvements
+
+Respond in this exact JSON format:
 {{
     "is_approved": boolean,
-    "explanation": "brief explanation (max 100 words)",
-    "key_points": ["point1", "point2", "point3"]
+    "explanation": "detailed explanation (max 200 words)",
+    "key_points": ["point1", "point2", "point3"],
+    "quality_score": number (0-100),
+    "requirements_met": [
+        {{
+            "requirement": "specific requirement",
+            "met": boolean,
+            "explanation": "brief explanation"
+        }}
+    ]
 }}"""
 
         # Generate response with optimized parameters
         response = model.generate_content(
             prompt,
             generation_config={
-                'temperature': 0.3,  # Lower temperature for more consistent results
-                'max_output_tokens': 200,  # Limit response length
+                'temperature': 0.2,  # Lower temperature for more consistent results
+                'max_output_tokens': 500,  # Increased for more detailed analysis
                 'top_p': 0.8,
                 'top_k': 40
             }
@@ -81,21 +118,34 @@ Analyze if the submission meets the requirements. Respond in JSON format:
         # Parse the response
         try:
             result = json.loads(response.text)
+            
+            # Validate and normalize the result
+            if not isinstance(result.get('quality_score'), (int, float)):
+                result['quality_score'] = 0
+            if not isinstance(result.get('key_points'), list):
+                result['key_points'] = []
+            if not isinstance(result.get('requirements_met'), list):
+                result['requirements_met'] = []
+            
+            return result
+
         except json.JSONDecodeError:
             # Fallback if JSON parsing fails
-            result = {
+            return {
                 "is_approved": False,
                 "explanation": "Error in verification process",
-                "key_points": ["Verification failed"]
+                "key_points": ["Verification failed"],
+                "quality_score": 0,
+                "requirements_met": []
             }
-
-        return result
 
     except Exception as e:
         return {
             "is_approved": False,
             "explanation": f"Error during verification: {str(e)}",
-            "key_points": ["Verification failed"]
+            "key_points": ["Verification failed"],
+            "quality_score": 0,
+            "requirements_met": []
         }
 
 @app.route('/verify', methods=['POST'])

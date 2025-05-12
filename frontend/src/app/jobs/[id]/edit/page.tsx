@@ -33,19 +33,21 @@ export default function EditJobPage({ params }: { params: { id: string } }) {
 
   useEffect(() => {
     const fetchJobDetails = async () => {
-      if (!contract || !params.id) return;
+      if (!contract || !account || !params.id) return;
 
       try {
         setLoading(true);
         setError(null);
 
-        const details = await contract.getJobDetails(params.id);
-        console.log('Job details:', details);
-
-        if (!details || details.owner === ethers.ZeroAddress) {
+        // First check if the job exists
+        const jobExists = await contract.jobs(params.id);
+        if (!jobExists) {
           throw new Error('Job not found');
         }
 
+        // Get job details
+        const details = await contract.getJobDetails(params.id);
+        
         // Check if the current user is the job owner
         if (details.owner !== account) {
           throw new Error('You are not authorized to edit this job');
@@ -69,7 +71,19 @@ export default function EditJobPage({ params }: { params: { id: string } }) {
         setDeadline(formattedDeadline);
       } catch (err) {
         console.error('Error fetching job details:', err);
-        setError(err instanceof Error ? err.message : 'Failed to fetch job details');
+        if (err instanceof Error) {
+          if (err.message.includes('Job not found')) {
+            setError('This job no longer exists');
+          } else if (err.message.includes('not authorized')) {
+            setError('You are not authorized to edit this job');
+          } else if (err.message.includes('completed or verified')) {
+            setError('Cannot edit a completed or verified job');
+          } else {
+            setError(err.message);
+          }
+        } else {
+          setError('Failed to fetch job details');
+        }
       } finally {
         setLoading(false);
       }

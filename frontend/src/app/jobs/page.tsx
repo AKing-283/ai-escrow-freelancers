@@ -43,39 +43,43 @@ export default function Jobs() {
   }, [role, isRoleLoading, router]);
 
   const fetchJobs = async () => {
-    if (!contract) return;
+    if (!contract || !account) return;
 
     try {
       setLoading(true);
       setError(null);
 
       // Get all JobPosted events
-      const filter = contract.filters["JobPosted(address,uint96,uint96,string)"];
+      const filter = contract.filters.JobPosted();
       console.log('Using filter:', filter);
       
       const events = await contract.queryFilter(filter);
       console.log('Found events:', events);
 
-      const formattedJobs = await Promise.all(
+      const jobsWithDetails = await Promise.all(
         events.map(async (event) => {
           try {
-            const [owner, amount, releaseTime, description] = event.args || [];
-            console.log('Processing event:', { owner, amount, releaseTime, description });
+            if (!('args' in event)) {
+              console.error('Event does not have args:', event);
+              return null;
+            }
+            const [owner, amount, deadline, description] = event.args;
+            console.log('Processing event:', { owner, amount, deadline, description });
             
             // Get additional job details from contract
-            const jobDetails = await contract.getJobDetails(owner);
-            console.log('Job details:', jobDetails);
+            const details = await contract.getJobDetails(owner);
+            console.log('Job details:', details);
 
             // Determine job status
             let status: Job['status'] = 'open';
             const currentTime = Math.floor(Date.now() / 1000);
-            const isExpired = Number(releaseTime) < currentTime;
+            const isExpired = Number(deadline) < currentTime;
 
-            if (jobDetails.isCompleted) {
+            if (details.isCompleted) {
               status = 'completed';
-            } else if (jobDetails.isVerified) {
-              status = jobDetails.isApproved ? 'approved' : 'rejected';
-            } else if (jobDetails.freelancer !== ethers.ZeroAddress) {
+            } else if (details.isVerified) {
+              status = details.isApproved ? 'approved' : 'rejected';
+            } else if (details.freelancer !== ethers.ZeroAddress) {
               status = isExpired ? 'rejected' : 'in_progress';
             } else if (isExpired) {
               status = 'rejected';
@@ -90,13 +94,13 @@ export default function Jobs() {
               title: description.split('\n')[0] || 'Untitled Job',
               description: description,
               budget: budgetInEth,
-              deadline: Number(releaseTime),
+              deadline: Number(deadline),
               owner: owner,
-              freelancer: jobDetails.freelancer,
+              freelancer: details.freelancer,
               status,
-              isApproved: jobDetails.isApproved,
-              isCompleted: jobDetails.isCompleted,
-              isVerified: jobDetails.isVerified
+              isApproved: details.isApproved,
+              isCompleted: details.isCompleted,
+              isVerified: details.isVerified
             };
           } catch (err) {
             console.error('Error processing job:', err);
@@ -105,10 +109,27 @@ export default function Jobs() {
         })
       );
 
-      const validJobs = formattedJobs.filter((job): job is Job => job !== null);
-      console.log('Formatted jobs:', validJobs);
-      setJobs(validJobs);
-      setFilteredJobs(validJobs);
+      // Filter out null values and sort by deadline
+      const validJobs = jobsWithDetails
+        .filter((job): job is Job => job !== null)
+        .sort((a, b) => a.deadline - b.deadline);
+
+      // Filter jobs based on user role
+      if (role === 'client') {
+        // For clients, show their own jobs
+        setJobs(validJobs.filter(job => job.owner === account));
+      } else if (role === 'freelancer') {
+        // For freelancers, show available jobs (not their own and not completed/verified)
+        setJobs(validJobs.filter(job => 
+          job.owner !== account && 
+          job.status === 'open' && 
+          !job.isCompleted && 
+          !job.isVerified
+        ));
+      } else {
+        // For others, show all jobs
+        setJobs(validJobs);
+      }
     } catch (err) {
       console.error('Error fetching jobs:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch jobs');
@@ -135,26 +156,12 @@ export default function Jobs() {
     
     try {
       setDeleteLoading(jobId);
-      
-      // First check if work has been submitted
-      const jobDetails = await contract.getJobDetails(jobId);
-      if (jobDetails.submission === "") {
-        // If no work submitted, we can't reject it yet
-        setError("Cannot reject job yet. Wait for work submission or let it expire.");
-        return;
-      }
-
-      // If work has been submitted, we can reject it
-      const tx = await contract.verifyWork(jobId, false);
+      const tx = await contract.deleteJob(jobId);
       await tx.wait();
       await fetchJobs(); // Refresh the jobs list
     } catch (err) {
-      console.error('Error rejecting job:', err);
-      if (err instanceof Error && err.message.includes('No work submitted yet')) {
-        setError('Cannot reject job yet. Wait for work submission or let it expire.');
-      } else {
-        setError(err instanceof Error ? err.message : 'Failed to reject job');
-      }
+      console.error('Error deleting job:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete job');
     } finally {
       setDeleteLoading(null);
     }
@@ -203,17 +210,13 @@ export default function Jobs() {
   return (
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-600">{error}</p>
-          </div>
-        )}
-        
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Available Jobs</h1>
+          <h1 className="text-3xl font-bold text-gray-900">
+            {role === 'client' ? 'My Projects' : 'Available Jobs'}
+          </h1>
           
           <div className="flex items-center space-x-4">
-            {/* Create New Job Button */}
+            {/* Create New Job Button - Only for clients */}
             {role === 'client' && (
               <button
                 onClick={() => router.push('/deposit')}
@@ -252,7 +255,11 @@ export default function Jobs() {
         {filteredJobs.length === 0 ? (
           <div className="text-center py-12">
             <h3 className="text-lg font-medium text-gray-900">No jobs found</h3>
-            <p className="mt-2 text-gray-500">There are no jobs matching the selected criteria.</p>
+            <p className="mt-2 text-gray-500">
+              {role === 'client' 
+                ? "You haven't created any jobs yet. Click 'Create New Job' to get started."
+                : "There are no available jobs matching the selected criteria."}
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -278,20 +285,18 @@ export default function Jobs() {
                           >
                             Edit
                           </button>
-                          {job.freelancer !== ethers.ZeroAddress && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (window.confirm('Are you sure you want to reject this job? This will refund the funds to you.')) {
-                                  handleDeleteJob(job.id);
-                                }
-                              }}
-                              disabled={deleteLoading === job.id}
-                              className="text-red-600 hover:text-red-700 text-sm font-medium disabled:opacity-50"
-                            >
-                              {deleteLoading === job.id ? 'Rejecting...' : 'Reject'}
-                            </button>
-                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm('Are you sure you want to delete this job?')) {
+                                handleDeleteJob(job.id);
+                              }
+                            }}
+                            disabled={deleteLoading === job.id}
+                            className="text-red-600 hover:text-red-700 text-sm font-medium disabled:opacity-50"
+                          >
+                            {deleteLoading === job.id ? 'Deleting...' : 'Delete'}
+                          </button>
                         </>
                       )}
                       <span className={`px-2 py-1 text-xs font-semibold rounded-full ${

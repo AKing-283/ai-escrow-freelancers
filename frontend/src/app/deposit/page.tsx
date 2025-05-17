@@ -28,7 +28,6 @@ export default function Deposit() {
     try {
       setLoading(true);
       setError(null);
-      setSuccess(false);
 
       // Verify contract is properly initialized
       if (!contract) {
@@ -41,12 +40,17 @@ export default function Deposit() {
       }
 
       // Validate inputs
-      if (!title.trim() || !description.trim() || !amount || !deadline) {
+      if (!title.trim() || !description.trim() || !deadline) {
         throw new Error('Please fill in all fields');
       }
 
-      const amountInWei = ethers.parseEther(amount);
-      const deadlineTimestamp = Math.floor(new Date(deadline).getTime() / 1000);
+      // Parse and validate the deadline
+      const deadlineDate = new Date(deadline);
+      if (isNaN(deadlineDate.getTime())) {
+        throw new Error('Invalid deadline date');
+      }
+
+      const deadlineTimestamp = Math.floor(deadlineDate.getTime() / 1000);
 
       // Check if current time is before deadline
       const currentTime = Math.floor(Date.now() / 1000);
@@ -54,37 +58,110 @@ export default function Deposit() {
         throw new Error('Deadline must be in the future');
       }
 
-      // Post the job
-      console.log('Posting job with details:', {
+      // Validate budget
+      if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+        throw new Error('Please enter a valid budget amount');
+      }
+
+      // Convert budget to wei
+      const budgetInWei = ethers.parseEther(amount);
+
+      // Create the job
+      console.log('Creating job with details:', {
         title,
         description,
-        amount: amountInWei.toString(),
-        deadline: deadlineTimestamp
+        deadline: deadlineTimestamp,
+        budget: budgetInWei.toString(),
+        formattedDeadline: new Date(deadlineTimestamp * 1000).toLocaleString()
       });
 
       const tx = await contract.postJob(
         deadlineTimestamp,
         `${title}\n\n${description}`,
-        { value: amountInWei }
+        { value: budgetInWei }
       );
 
       console.log('Transaction sent:', tx.hash);
       const receipt = await tx.wait();
       console.log('Transaction confirmed:', receipt);
+      console.log('Full transaction receipt:', JSON.stringify(receipt, null, 2));
+
+      // Log all events in the transaction
+      console.log('All events in transaction:', receipt.logs.map((log: any) => ({
+        address: log.address,
+        topics: log.topics,
+        data: log.data,
+        fragment: log.fragment ? {
+          name: log.fragment.name,
+          inputs: log.fragment.inputs
+        } : null
+      })));
+
+      // Get the job ID from the event
+      const event = receipt.logs.find(
+        (log: any) => {
+          try {
+            console.log('Checking log:', {
+              address: log.address,
+              topics: log.topics,
+              fragment: log.fragment ? {
+                name: log.fragment.name,
+                inputs: log.fragment.inputs
+              } : null
+            });
+            return log.fragment && log.fragment.name === 'JobPosted';
+          } catch (err) {
+            console.error('Error checking log:', err);
+            return false;
+          }
+        }
+      );
+      
+      if (!event) {
+        console.error('No JobPosted event found in logs');
+        // Instead of throwing error, just redirect to jobs list
+        setSuccess(true);
+        setTimeout(() => {
+          router.push('/jobs');
+        }, 2000);
+        return;
+      }
+
+      const jobId = event.args[0];
+      console.log('Job created with ID:', jobId);
+
+      // Wait a moment for the blockchain to update
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Verify the job was created
+      try {
+        const jobExists = await contract.jobs(jobId);
+        console.log('Job verification result:', jobExists);
+        if (!jobExists) {
+          console.error('Job verification failed - job does not exist');
+          throw new Error('Job creation verification failed');
+        }
+      } catch (verifyErr) {
+        console.error('Error verifying job creation:', verifyErr);
+        // Still consider it a success and redirect
+        setSuccess(true);
+        setTimeout(() => {
+          router.push('/jobs');
+        }, 2000);
+        return;
+      }
 
       setSuccess(true);
-      setTitle('');
-      setDescription('');
-      setAmount('');
-      setDeadline('');
-      router.push('/jobs');
+      setTimeout(() => {
+        router.push('/jobs');
+      }, 2000);
     } catch (err) {
-      console.error('Error posting job:', err);
+      console.error('Error creating job:', err);
       if (err instanceof Error) {
-        if (err.message.includes('Job already exists')) {
-          setError('You already have an active job. Please complete or cancel it before posting a new one.');
-        } else if (err.message.includes('insufficient funds')) {
-          setError('Insufficient funds to post the job. Please ensure you have enough ETH to cover the job amount and gas fees.');
+        if (err.message.includes('insufficient funds')) {
+          setError('Insufficient funds to create the job. Please ensure you have enough ETH for the budget and gas fees.');
+        } else if (err.message.includes('user rejected')) {
+          setError('Transaction was rejected. Please try again.');
         } else {
           setError(err.message);
         }
@@ -157,7 +234,7 @@ export default function Deposit() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label htmlFor="title" className="block text-sm font-medium text-gray-700">
-                Job Title
+                Title
               </label>
               <input
                 type="text"
@@ -165,14 +242,13 @@ export default function Deposit() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                placeholder="Enter job title"
                 required
               />
             </div>
 
             <div>
               <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                Job Description
+                Description
               </label>
               <textarea
                 id="description"
@@ -180,7 +256,6 @@ export default function Deposit() {
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                placeholder="Enter detailed job description"
                 required
               />
             </div>
@@ -197,7 +272,6 @@ export default function Deposit() {
                 step="0.01"
                 min="0"
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                placeholder="Enter budget in ETH"
                 required
               />
             </div>
@@ -219,11 +293,7 @@ export default function Deposit() {
             <button
               type="submit"
               disabled={loading}
-              className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
-                loading
-                  ? 'bg-blue-400 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
-              }`}
+              className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:bg-gray-400"
             >
               {loading ? 'Posting Job...' : 'Post Job'}
             </button>

@@ -19,8 +19,14 @@ export default function Withdraw() {
   }, [contract, account]);
 
   const loadJobs = async () => {
+    if (!contract || !account) {
+      setError('Contract or account not initialized');
+      return;
+    }
+
     try {
-      setError(null);
+      setError('');
+      setLoading(true);
 
       // Get all jobs where the user is the freelancer
       const filter = contract.filters["JobPosted(address,uint96,uint96,string)"];
@@ -30,39 +36,50 @@ export default function Withdraw() {
       
       // Format jobs from events
       const formattedJobs = await Promise.all(events.map(async (event: any) => {
-        console.log('Processing event:', event);
-        const details = await contract.getJobDetails(event.args.owner);
-        console.log('Job details:', details);
-        // Only include jobs where the current user is the freelancer
-        if (details.freelancer.toLowerCase() === account.toLowerCase()) {
-          return {
-            id: event.args.owner,
-            title: 'Project',
-            description: details.description,
-            budget: ethers.formatEther(details.amount),
-            deadline: Number(details.releaseTime),
-            owner: details.owner,
-            freelancer: details.freelancer,
-            status: details.isCompleted ? 'completed' : 
-                   details.isVerified ? 'verified' :
-                   details.freelancer !== ethers.ZeroAddress ? 'in-progress' : 'open',
-            isApproved: details.isApproved
-          };
+        try {
+          console.log('Processing event:', event);
+          const details = await contract.getJobDetails(event.args.owner);
+          console.log('Job details:', details);
+          // Only include jobs where the current user is the freelancer
+          if (details.freelancer.toLowerCase() === account.toLowerCase()) {
+            return {
+              id: event.args.owner,
+              title: 'Project',
+              description: details.description,
+              budget: ethers.formatEther(details.amount),
+              deadline: Number(details.releaseTime),
+              owner: details.owner,
+              freelancer: details.freelancer,
+              status: details.isCompleted ? 'completed' : 
+                     details.isVerified ? 'verified' :
+                     details.freelancer !== ethers.ZeroAddress ? 'in-progress' : 'open',
+              isApproved: details.isApproved
+            };
+          }
+          return null;
+        } catch (err) {
+          console.error('Error processing event:', err);
+          return null;
         }
-        return null;
       }));
 
       // Filter out null values
       const filteredJobs = formattedJobs.filter(job => job !== null);
       console.log('Formatted jobs:', filteredJobs);
       setJobs(filteredJobs);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading jobs:', error);
+      setError(error.message || 'Failed to load jobs');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleRelease = async (owner: string) => {
-    if (!contract || !account) return;
+    if (!contract || !account) {
+      setError('Contract or account not initialized');
+      return;
+    }
 
     setLoading(true);
     setError('');
@@ -72,8 +89,9 @@ export default function Withdraw() {
       const tx = await contract.releaseFunds(owner);
       await tx.wait();
       setSuccess('Funds released successfully!');
-      loadJobs();
+      await loadJobs();
     } catch (error: any) {
+      console.error('Error releasing funds:', error);
       setError(error.message || 'Error releasing funds');
     } finally {
       setLoading(false);
@@ -99,7 +117,9 @@ export default function Withdraw() {
           <div className="bg-white p-6 rounded-lg shadow-lg">
             <h2 className="text-xl font-semibold mb-4">Available Jobs</h2>
             
-            {jobs.length === 0 ? (
+            {loading ? (
+              <p className="text-gray-500">Loading jobs...</p>
+            ) : jobs.length === 0 ? (
               <p className="text-gray-500">No jobs available for withdrawal.</p>
             ) : (
               <div className="space-y-4">

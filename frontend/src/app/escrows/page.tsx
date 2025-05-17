@@ -7,9 +7,10 @@ import { ethers } from 'ethers';
 import AIVerification from '../../components/AIVerification';
 
 interface Escrow {
-  id: number;
+  id: string;
   owner: string;
   beneficiary: string;
+  freelancer: string;
   amount: string;
   releaseTime: number;
   released: boolean;
@@ -19,6 +20,7 @@ interface Escrow {
   isVerified: boolean;
   isApproved: boolean;
   verificationExplanation: string;
+  status: 'completed' | 'verified' | 'in-progress' | 'open';
 }
 
 export default function Escrows() {
@@ -26,7 +28,7 @@ export default function Escrows() {
   const [escrows, setEscrows] = useState<Escrow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [releasingId, setReleasingId] = useState<number | null>(null);
+  const [releasingId, setReleasingId] = useState<string | null>(null);
   const [selectedEscrow, setSelectedEscrow] = useState<Escrow | null>(null);
   const [filter, setFilter] = useState<'all' | 'client' | 'freelancer'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'in-progress' | 'completed' | 'verified'>('all');
@@ -55,14 +57,23 @@ export default function Escrows() {
             id: event.args.owner,
             title: 'Project',
             description: details.description,
-            budget: ethers.formatEther(details.amount),
-            deadline: Number(details.releaseTime),
             owner: details.owner,
+            beneficiary: details.freelancer,
             freelancer: details.freelancer,
-            status: details.isCompleted ? 'completed' : 
-                   details.isVerified ? 'verified' :
-                   details.freelancer !== ethers.ZeroAddress ? 'in-progress' : 'open',
-            isApproved: details.isApproved
+            amount: ethers.formatEther(details.amount),
+            releaseTime: Number(details.releaseTime),
+            released: details.isCompleted || false,
+            submission: details.submission || '',
+            isVerified: details.isVerified || false,
+            isApproved: details.isApproved || false,
+            verificationExplanation: '',
+            status: (details.isCompleted
+              ? 'completed'
+              : details.isVerified
+              ? 'verified'
+              : details.freelancer !== ethers.ZeroAddress
+              ? 'in-progress'
+              : 'open') as 'completed' | 'verified' | 'in-progress' | 'open',
           };
         }
         return null;
@@ -236,12 +247,12 @@ export default function Escrows() {
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
                       <p className="text-sm font-medium text-gray-500">Amount</p>
-                      <p className="text-sm text-gray-900">{escrow.budget} ETH</p>
+                      <p className="text-sm text-gray-900">{escrow.amount} ETH</p>
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-500">Deadline</p>
                       <p className="text-sm text-gray-900">
-                        {new Date(escrow.deadline * 1000).toLocaleDateString()}
+                        {new Date(escrow.releaseTime * 1000).toLocaleDateString()}
                       </p>
                     </div>
                   </div>
@@ -265,7 +276,7 @@ export default function Escrows() {
                     </div>
                   )}
 
-                  {!escrow.status === 'completed' && account === escrow.owner && escrow.status !== 'verified' && (
+                  {escrow.status !== 'completed' && account === escrow.owner && escrow.status !== 'verified' && (
                     <button
                       onClick={() => setSelectedEscrow(escrow)}
                       className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"

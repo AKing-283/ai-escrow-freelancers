@@ -59,7 +59,8 @@ export default function Jobs() {
       const formattedJobs = await Promise.all(
         events.map(async (event) => {
           try {
-            const [owner, amount, releaseTime, description] = event.args || [];
+            const eventLog = event as ethers.EventLog;
+            const [owner, amount, releaseTime, description] = eventLog.args || [];
             console.log('Processing event:', { owner, amount, releaseTime, description });
             
             // Get additional job details from contract
@@ -81,7 +82,6 @@ export default function Jobs() {
               status = 'rejected';
             }
 
-            // Format the budget amount
             const budgetInEth = ethers.formatEther(amount);
             console.log('Budget in ETH:', budgetInEth);
 
@@ -163,17 +163,17 @@ export default function Jobs() {
   if (!account) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow-sm">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-gray-900">Connect Your Wallet</h2>
-            <p className="mt-2 text-gray-600">Please connect your wallet to view jobs</p>
-            <button
-              onClick={connect}
-              className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-            >
-              Connect Wallet
-            </button>
-          </div>
+        <div className="max-w-md w-full bg-white rounded-lg shadow-sm p-8 text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Connect Your Wallet</h2>
+          <p className="text-gray-600 mb-6">
+            Please connect your wallet to view available jobs
+          </p>
+          <button
+            onClick={connect}
+            className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+          >
+            Connect Wallet
+          </button>
         </div>
       </div>
     );

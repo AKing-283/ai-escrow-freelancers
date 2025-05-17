@@ -30,7 +30,7 @@ export const Web3Provider = ({ children }: { children: React.ReactNode }) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const CONTRACT_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
+  const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 
   // Wallet connect/disconnect logic
   const connect = async () => {
@@ -104,15 +104,45 @@ export const Web3Provider = ({ children }: { children: React.ReactNode }) => {
     const setupContract = async () => {
       if (provider && account) {
         try {
+          // Ensure we have the ABI
+          if (!WillEscrow || !WillEscrow.abi) {
+            console.error('Contract ABI is missing:', WillEscrow);
+            throw new Error('Contract ABI is not loaded');
+          }
+
           const signer = await provider.getSigner();
+          if (!signer) {
+            throw new Error('Failed to get signer');
+          }
+
+          // Create contract instance
           const contractInstance = new ethers.Contract(
             CONTRACT_ADDRESS,
             WillEscrow.abi,
             signer
           );
+
+          // Verify contract instance
+          if (!contractInstance) {
+            throw new Error('Failed to create contract instance');
+          }
+
+          // Verify postJob function exists
+          if (typeof contractInstance.postJob !== 'function') {
+            console.error('Contract functions:', Object.keys(contractInstance.functions));
+            throw new Error('postJob function not found in contract');
+          }
+
+          console.log('Contract initialized successfully:', {
+            address: contractInstance.target,
+            functions: Object.keys(contractInstance.functions)
+          });
+
           setContract(contractInstance);
         } catch (err) {
-          setError('Failed to load contract');
+          console.error('Error setting up contract:', err);
+          setError(err instanceof Error ? err.message : 'Failed to load contract');
+          setContract(null);
         }
       } else {
         setContract(null);

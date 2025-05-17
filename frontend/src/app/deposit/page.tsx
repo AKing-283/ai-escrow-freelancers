@@ -20,12 +20,25 @@ export default function Deposit() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!contract || !account) return;
+    if (!contract || !account) {
+      setError('Please connect your wallet first');
+      return;
+    }
 
     try {
       setLoading(true);
       setError(null);
       setSuccess(false);
+
+      // Verify contract is properly initialized
+      if (!contract) {
+        throw new Error('Contract not initialized. Please try reconnecting your wallet.');
+      }
+
+      if (typeof contract.postJob !== 'function') {
+        console.error('Contract functions:', Object.keys(contract.functions));
+        throw new Error('Contract not properly initialized. Please try reconnecting your wallet.');
+      }
 
       // Validate inputs
       if (!title.trim() || !description.trim() || !amount || !deadline) {
@@ -39,17 +52,6 @@ export default function Deposit() {
       const currentTime = Math.floor(Date.now() / 1000);
       if (deadlineTimestamp <= currentTime) {
         throw new Error('Deadline must be in the future');
-      }
-
-      // Check if user already has a job
-      try {
-        const existingJob = await contract.getJobDetails(account);
-        if (existingJob && existingJob.owner === account) {
-          throw new Error('You already have an active job. Please complete or cancel it before posting a new one.');
-        }
-      } catch (err) {
-        // If getJobDetails fails, it means no job exists, which is what we want
-        console.log('No existing job found, proceeding with job creation');
       }
 
       // Post the job
@@ -70,20 +72,12 @@ export default function Deposit() {
       const receipt = await tx.wait();
       console.log('Transaction confirmed:', receipt);
 
-      // Verify job creation
-      const jobDetails = await contract.getJobDetails(account);
-      console.log('Job details after creation:', jobDetails);
-
-      if (jobDetails.owner === account) {
-        setSuccess(true);
-        setTitle('');
-        setDescription('');
-        setAmount('');
-        setDeadline('');
-        router.push('/jobs');
-      } else {
-        throw new Error('Failed to verify job creation');
-      }
+      setSuccess(true);
+      setTitle('');
+      setDescription('');
+      setAmount('');
+      setDeadline('');
+      router.push('/jobs');
     } catch (err) {
       console.error('Error posting job:', err);
       if (err instanceof Error) {

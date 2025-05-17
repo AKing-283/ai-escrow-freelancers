@@ -85,7 +85,6 @@ export default function Jobs() {
               status = 'rejected';
             }
 
-            // Format the budget amount
             const budgetInEth = ethers.formatEther(amount);
             console.log('Budget in ETH:', budgetInEth);
 
@@ -170,17 +169,17 @@ export default function Jobs() {
   if (!account) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow-sm">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-gray-900">Connect Your Wallet</h2>
-            <p className="mt-2 text-gray-600">Please connect your wallet to view jobs</p>
-            <button
-              onClick={connect}
-              className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-            >
-              Connect Wallet
-            </button>
-          </div>
+        <div className="max-w-md w-full bg-white rounded-lg shadow-sm p-8 text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Connect Your Wallet</h2>
+          <p className="text-gray-600 mb-6">
+            Please connect your wallet to view available jobs
+          </p>
+          <button
+            onClick={connect}
+            className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+          >
+            Connect Wallet
+          </button>
         </div>
       </div>
     );
@@ -252,91 +251,63 @@ export default function Jobs() {
           </div>
         </div>
 
-        {filteredJobs.length === 0 ? (
+        {loading ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          </div>
+        ) : filteredJobs.length === 0 ? (
           <div className="text-center py-12">
-            <h3 className="text-lg font-medium text-gray-900">No jobs found</h3>
-            <p className="mt-2 text-gray-500">
-              {role === 'client' 
-                ? "You haven't created any jobs yet. Click 'Create New Job' to get started."
-                : "There are no available jobs matching the selected criteria."}
-            </p>
+            <p className="text-gray-500 text-lg">No jobs found.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {filteredJobs.map((job) => (
               <div
                 key={job.id}
-                className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow"
+                className="bg-white rounded-lg shadow-sm overflow-hidden"
               >
                 <div className="p-6">
-                  <div className="flex justify-between items-start mb-4">
-                    <h2 className="text-xl font-semibold text-gray-900 truncate">
+                  <div className="flex justify-between items-start">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
                       {job.title}
-                    </h2>
-                    <div className="flex items-center space-x-2">
-                      {job.owner === account && !job.isCompleted && !job.isVerified && (
-                        <>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              router.push(`/jobs/${job.id}/edit`);
-                            }}
-                            className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (window.confirm('Are you sure you want to delete this job?')) {
-                                handleDeleteJob(job.id);
-                              }
-                            }}
-                            disabled={deleteLoading === job.id}
-                            className="text-red-600 hover:text-red-700 text-sm font-medium disabled:opacity-50"
-                          >
-                            {deleteLoading === job.id ? 'Deleting...' : 'Delete'}
-                          </button>
-                        </>
-                      )}
-                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                        job.status === 'open' ? 'bg-blue-100 text-blue-800' :
-                        job.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
-                        job.status === 'completed' ? 'bg-gray-100 text-gray-800' :
-                        job.status === 'approved' ? 'bg-green-100 text-green-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {job.status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                      </span>
-                    </div>
+                    </h3>
+                    <span
+                      className={`px-2 py-1 text-xs font-medium rounded-full ${
+                        job.status === 'open'
+                          ? 'bg-green-100 text-green-800'
+                          : job.status === 'in_progress'
+                          ? 'bg-blue-100 text-blue-800'
+                          : job.status === 'completed'
+                          ? 'bg-purple-100 text-purple-800'
+                          : job.status === 'approved'
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}
+                    >
+                      {job.status.replace('_', ' ')}
+                    </span>
                   </div>
-                  
-                  <p className="text-gray-600 line-clamp-3 mb-4">
+                  <p className="text-gray-600 mb-4 line-clamp-3">
                     {job.description}
                   </p>
-                  
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-gray-500">Budget</span>
-                      <span className="font-semibold text-gray-900">{job.budget} ETH</span>
-                    </div>
-                    
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-gray-500">Deadline</span>
-                      <div className="text-right">
-                        <span className={`font-semibold ${
-                          job.deadline * 1000 < Date.now() ? 'text-red-600' : 'text-gray-900'
-                        }`}>
-                          {new Date(job.deadline * 1000).toLocaleDateString()}
-                        </span>
-                        <p className="text-xs text-gray-500">
-                          {job.deadline * 1000 < Date.now() 
-                            ? 'Expired' 
-                            : `${Math.ceil((job.deadline * 1000 - Date.now()) / (1000 * 60 * 60 * 24))} days left`}
-                        </p>
-                      </div>
-                    </div>
+                  <div className="flex justify-between items-center text-sm text-gray-500">
+                    <span>Budget: {job.budget} ETH</span>
+                    <span>
+                      Deadline:{' '}
+                      {new Date(job.deadline * 1000).toLocaleDateString()}
+                    </span>
                   </div>
+                  {role === 'client' && job.owner === account && (
+                    <div className="mt-4 flex justify-end">
+                      <button
+                        onClick={() => handleDeleteJob(job.id)}
+                        disabled={deleteLoading === job.id}
+                        className="text-red-600 hover:text-red-800 text-sm font-medium"
+                      >
+                        {deleteLoading === job.id ? 'Deleting...' : 'Delete Job'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

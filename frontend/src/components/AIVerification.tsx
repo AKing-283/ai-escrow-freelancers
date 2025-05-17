@@ -3,7 +3,7 @@ import { useWeb3 } from '../context/Web3Context';
 import { ethers } from 'ethers';
 
 interface AIVerificationProps {
-  jobId: number;
+  jobId: string;
   clientDescription: string;
   freelancerSubmission: string;
   onVerificationComplete: (isApproved: boolean) => void;

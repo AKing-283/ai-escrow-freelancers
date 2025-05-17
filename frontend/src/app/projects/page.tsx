@@ -12,7 +12,7 @@ interface Project {
   deadline: number;
   owner: string;
   freelancer: string;
-  status: 'open' | 'in-progress' | 'completed' | 'verified';
+  status: 'open' | 'completed' | 'verified' | 'in-progress';
   isApproved: boolean;
 }
 
@@ -48,10 +48,14 @@ const ProjectsPage: React.FC = () => {
           deadline: Number(details.releaseTime),
           owner: details.owner,
           freelancer: details.freelancer,
-          status: details.isCompleted ? 'completed' : 
-                 details.isVerified ? 'verified' :
-                 details.freelancer !== ethers.ZeroAddress ? 'in-progress' : 'open',
-          isApproved: details.isApproved
+          status: (details.isCompleted
+            ? 'completed'
+            : details.isVerified
+            ? 'verified'
+            : details.freelancer !== ethers.ZeroAddress
+            ? 'in-progress'
+            : 'open') as 'completed' | 'verified' | 'in-progress' | 'open',
+          isApproved: details.isApproved || false,
         };
       }));
 

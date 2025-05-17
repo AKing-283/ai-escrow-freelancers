@@ -5,6 +5,7 @@ import { useWeb3 } from '../../context/Web3Context';
 import { useUserRole } from '../../context/UserRoleContext';
 import { useRouter } from 'next/navigation';
 import { ethers } from 'ethers';
+import { EventLog } from 'ethers';
 
 interface JobAnalysis {
   jobId: string;
@@ -67,7 +68,8 @@ export default function AgentAnalysisPage() {
         const jobAnalyses = await Promise.all(
           events.map(async (event) => {
             try {
-              const [owner, amount, releaseTime, description] = event.args || [];
+              const eventLog = event as EventLog;
+              const [owner, amount, releaseTime, description] = eventLog.args || [];
               const jobDetails = await contract.getJobDetails(owner);
 
               // Only analyze jobs that have submissions
@@ -83,7 +85,7 @@ export default function AgentAnalysisPage() {
                 recommendation: jobDetails.isApproved ? 'approve' : 'reject',
                 detailedFeedback: "Technical implementation is solid with good code organization and documentation. Communication was clear and professional throughout the project. The solution addresses all requirements effectively.",
                 comparisonWithRequirements: {
-                  requirements: description.split('\n').filter(line => line.trim()),
+                  requirements: description.split('\n').filter((line: string) => line.trim()),
                   met: [true, true, true], // Example: all requirements met
                   feedback: [
                     "Requirement 1: Implemented correctly with good documentation",
